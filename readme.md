@@ -1,0 +1,1 @@
+A program designed to evaluate kinematic coupling error propagation throughout the flasher and the severity of overconstraint.
