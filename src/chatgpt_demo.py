@@ -35,9 +35,10 @@ def generate_test_case(body_points, plane_normals, true_rot, true_t):
     misalignments = d_true - d_original
     return misalignments
 
-def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot=None, true_t=None):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot=None, true_t=None, ax=None):
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
 
     # Original and transformed points
     P_orig = np.array(body_points)
@@ -49,10 +50,11 @@ def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est
         P_true = true_rot.apply(P_orig) + true_t
         ax.scatter(*P_true.T, color='green', label='Transformed (True) Points')
 
-    # Visualize the planes as transparent squares centered on the constrained points
+    # Visualize the planes as transparent squares centered on the projection of the estimated points onto the planes
     for i, (p, n, m) in enumerate(zip(P_orig, plane_normals, misalignments)):
-        # Compute a point on the translated plane
-        point_on_plane = p + m * n
+        # Compute a point on the translated plane by projecting P_est onto the plane
+        P_est_point = P_est[i]
+        point_on_plane = P_est_point - np.dot(P_est_point - (p + m * n), n) * n
         # Generate two orthogonal vectors in the plane
         u = np.cross(n, np.array([1, 0, 0]))
         if np.linalg.norm(u) < 1e-6:
@@ -83,10 +85,64 @@ def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est
     ax.set_zlabel("Z")
     ax.legend()
     ax.set_title("Pose Estimation Visualization")
-    plt.tight_layout()
-    plt.show()
 
-def test_case_1(body_points, plane_normals):
+# No planes are misaligned
+def test_case_0(body_points, plane_normals, ax):
+    misalignments = np.array([1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# All planes misaligned by 0.1 along their normals
+def test_case_1(body_points, plane_normals, ax):
+    misalignments = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# All planes misaligned by -0.1 along their normals
+def test_case_2(body_points, plane_normals, ax):
+    misalignments = np.array([-0.1, -0.1, -0.1, -0.1, -0.1, -0.1])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# The first ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
+def test_case_3(body_points, plane_normals, ax):
+    misalignments = np.array([0.1, 0.1, 1e-6, 1e-6, 1e-6, 1e-6])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# The second ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
+def test_case_4(body_points, plane_normals, ax):
+    misalignments = np.array([1e-6, 1e-6, 0.1, 0.1, 1e-6, 1e-6])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# The third ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
+def test_case_5(body_points, plane_normals, ax):
+    misalignments = np.array([1e-6, 1e-6, 1e-6, 1e-6, 0.1, 0.1])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# All ball-grooves misaligned with alternating signs to induce a rotation
+def test_case_6(body_points, plane_normals, ax):
+    misalignments = np.array([0.1, -0.1, -0.1, 0.1, 0.1, -0.1])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# All planes misaligned with varying magnitudes to test robustness
+def test_case_7(body_points, plane_normals, ax):
+    misalignments = np.array([0.3, -0.2, 0.3, 0.5, 1e-6, -0.2])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# All planes misaligned with new varying magnitudes to test robustness
+def test_case_8(body_points, plane_normals, ax):
+    misalignments = np.array([-0.2, 1e-6, 0.1, -0.2, 0.3, 0.3])
+    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+
+# Generating misalignments based on a known true rotation and translation
+# This test case is used to verify the accuracy of the pose estimation algorithm
+def test_case_9(body_points, plane_normals, ax):
     true_rot = R.from_euler('xyz', [7, 5, 12], degrees=True)
     true_t = np.array([0.2, 0.4, 0.6])
 
@@ -97,16 +153,8 @@ def test_case_1(body_points, plane_normals):
     print("Estimated rotation matrix:")
     print(est_rot.as_matrix())
 
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot, true_t)
+    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot, true_t, ax=ax)
 
-def test_case_2(body_points, plane_normals):
-    misalignments = np.array([0.1, 0.1, -0.1, -0.1, 0.1, 0.2])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    print("Estimated translation:", est_t)
-    print("Estimated rotation matrix:")
-    print(est_rot.as_matrix())
-
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t)
 
 
 if __name__ == "__main__":
@@ -128,5 +176,58 @@ if __name__ == "__main__":
         [-1, 0, 1]
     ], dtype=float)
     plane_normals /= np.linalg.norm(plane_normals, axis=1, keepdims=True)
-    #test_case_1(body_points, plane_normals)
-    test_case_2(body_points, plane_normals)
+
+    fig, axes = plt.subplots(3, 3, subplot_kw={'projection': '3d'}, figsize=(10, 9))
+    view_angle = (45, 45)  # Set a consistent view angle for all subplots
+
+    ax = axes[0, 0]
+    ax.view_init(*view_angle)
+    test_case_0(body_points, plane_normals, ax)
+    ax.set_title("Test Case 0: No Misalignments", fontsize=9)
+
+    ax = axes[0, 1]
+    ax.view_init(*view_angle)
+    test_case_1(body_points, plane_normals, ax)
+    ax.set_title("Test Case 1: All Planes Misaligned by 0.1", fontsize=9)
+
+    ax = axes[0, 2]
+    ax.view_init(*view_angle)
+    test_case_2(body_points, plane_normals, ax)
+    ax.set_title("Test Case 2: All Planes Misaligned by -0.1", fontsize=9)
+
+    ax = axes[1, 0]
+    ax.view_init(*view_angle)
+    test_case_3(body_points, plane_normals, ax)
+    ax.set_title("Test Case 3: First Ball-Groove Misaligned by 0.1", fontsize=9)
+
+    ax = axes[1, 1]
+    ax.view_init(*view_angle)
+    test_case_4(body_points, plane_normals, ax)
+    ax.set_title("Test Case 4: Second Ball-Groove Misaligned by 0.1", fontsize=9)
+
+    ax = axes[1, 2]
+    ax.view_init(*view_angle)
+    test_case_5(body_points, plane_normals, ax)
+    ax.set_title("Test Case 5: Third Ball-Groove Misaligned by 0.1", fontsize=9)
+
+    ax = axes[2, 0]
+    ax.view_init(*view_angle)
+    test_case_6(body_points, plane_normals, ax)
+    ax.set_title("Test Case 6: Radial Misalignments", fontsize=9)
+
+    ax = axes[2, 1]
+    ax.view_init(*view_angle)
+    test_case_7(body_points, plane_normals, ax)
+    ax.set_title("Test Case 7: Varying Magnitudes 1", fontsize=9)
+
+    ax = axes[2, 2]
+    ax.view_init(*view_angle)
+    test_case_8(body_points, plane_normals, ax)
+    ax.set_title("Test Case 8: Varying Magnitudes 2", fontsize=9)
+
+    for ax in axes.flat:
+        ax.legend(fontsize=6)
+
+    fig.tight_layout()
+    fig.subplots_adjust(hspace=0.2)
+    plt.show()
