@@ -4,9 +4,18 @@ from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-np.set_printoptions(precision=4, suppress=True)
-
 def estimate_pose(body_points, plane_normals, plane_misalignments):
+    """
+    Consider a rigid body with 6 relevant points in 3D space, relative to the body's origin.
+    Each of those 6 points are restrained by only one degree of freedom. That degree of freedom
+    is along one translational axis, represented by constraint to a plane in 3D. Each point has
+    its own plane, and the normal of that plane is the direction of the restricted translational
+    degree of freedom. Consider now a scenario where one of the planar constraints are very slightly 
+    moved in 3d space, along the normal of the plane (this is the misalignment value). The points
+    shift slightly within each of their respective planes, and the body reaches a new pose.
+
+
+    """
     P = np.asarray(body_points)
     Nn = np.asarray(plane_normals)
     m = np.asarray(plane_misalignments)
@@ -24,25 +33,25 @@ def estimate_pose(body_points, plane_normals, plane_misalignments):
         return np.einsum('ij,ij->i', Nn, Pw) - d
 
     result = least_squares(residual, x0, method='lm')
-    rot_opt = R.from_rotvec(result.x[:3])
-    t_opt = result.x[3:]
-    return rot_opt, t_opt
+    if not result.success:
+        raise RuntimeError("Optimization failed: " + result.message)
+    return result
+    # result.x[:3] is the rotation vector, result.x[3:] is the translation
+    #rot_opt = R.from_rotvec(result.x[:3])
+    #t_opt = result.x[3:]
+#return rot_opt, t_opt
 
-def generate_test_case(body_points, plane_normals, true_rot, true_t):
-    transformed_points = true_rot.apply(body_points) + true_t
-    d_true = np.einsum('ij,ij->i', plane_normals, transformed_points)
-    d_original = np.einsum('ij,ij->i', plane_normals, body_points)
-    misalignments = d_true - d_original
-    return misalignments
-
-def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot=None, true_t=None, ax=None):
+def plot_pose_estimation(body_points, plane_normals, misalignments, result, true_rot=None, true_t=None, ax=None):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
     # Original and transformed points
     P_orig = np.array(body_points)
-    P_est = est_rot.apply(P_orig) + est_t
+    rot_vec = result.x[:3]
+    t = result.x[3:]
+    rot = R.from_rotvec(rot_vec)
+    P_est = rot.apply(P_orig) + t
     ax.scatter(*P_orig.T, color='blue', label='Original Body Points')
     ax.scatter(*P_est.T, color='red', label='Transformed (Estimated) Points')
 
@@ -86,76 +95,68 @@ def plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est
     ax.legend()
     ax.set_title("Pose Estimation Visualization")
 
-# No planes are misaligned
+# Update test cases to use the modified `estimate_pose` function
 def test_case_0(body_points, plane_normals, ax):
     misalignments = np.array([1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# All planes misaligned by 0.1 along their normals
 def test_case_1(body_points, plane_normals, ax):
     misalignments = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# All planes misaligned by -0.1 along their normals
 def test_case_2(body_points, plane_normals, ax):
     misalignments = np.array([-0.1, -0.1, -0.1, -0.1, -0.1, -0.1])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# The first ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
 def test_case_3(body_points, plane_normals, ax):
     misalignments = np.array([0.1, 0.1, 1e-6, 1e-6, 1e-6, 1e-6])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# The second ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
 def test_case_4(body_points, plane_normals, ax):
     misalignments = np.array([1e-6, 1e-6, 0.1, 0.1, 1e-6, 1e-6])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# The third ball-groove misaligned by 0.1 along its normal, all others unchanged (effectively 0)
 def test_case_5(body_points, plane_normals, ax):
     misalignments = np.array([1e-6, 1e-6, 1e-6, 1e-6, 0.1, 0.1])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# All ball-grooves misaligned with alternating signs to induce a rotation
 def test_case_6(body_points, plane_normals, ax):
     misalignments = np.array([0.1, -0.1, -0.1, 0.1, 0.1, -0.1])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# All planes misaligned with varying magnitudes to test robustness
 def test_case_7(body_points, plane_normals, ax):
     misalignments = np.array([0.3, -0.2, 0.3, 0.5, 1e-6, -0.2])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# All planes misaligned with new varying magnitudes to test robustness
 def test_case_8(body_points, plane_normals, ax):
     misalignments = np.array([-0.2, 1e-6, 0.1, -0.2, 0.3, 0.3])
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, ax=ax)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, ax=ax)
 
-# Generating misalignments based on a known true rotation and translation
-# This test case is used to verify the accuracy of the pose estimation algorithm
 def test_case_9(body_points, plane_normals, ax):
     true_rot = R.from_euler('xyz', [7, 5, 12], degrees=True)
     true_t = np.array([0.2, 0.4, 0.6])
 
-    misalignments = generate_test_case(body_points, plane_normals, true_rot, true_t)
-    est_rot, est_t = estimate_pose(body_points, plane_normals, misalignments)
+    transformed_points = true_rot.apply(body_points) + true_t
+    d_true = np.einsum('ij,ij->i', plane_normals, transformed_points)
+    d_original = np.einsum('ij,ij->i', plane_normals, body_points)
+    misalignments = d_true - d_original
 
-    print("Estimated translation:", est_t)
+    result = estimate_pose(body_points, plane_normals, misalignments)
+
+    print("Estimated translation:", result.x[3:])
     print("Estimated rotation matrix:")
-    print(est_rot.as_matrix())
+    print(R.from_rotvec(result.x[:3]).as_matrix())
 
-    plot_pose_estimation(body_points, plane_normals, misalignments, est_rot, est_t, true_rot, true_t, ax=ax)
-
-
+    plot_pose_estimation(body_points, plane_normals, misalignments, result, true_rot, true_t, ax=ax)
 
 if __name__ == "__main__":
     body_points = np.array([
