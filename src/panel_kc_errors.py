@@ -101,11 +101,12 @@ class Panel():
         # Solve for the misalignment poses
         kc_object.solve_misalignment_poses(misalignments)
 
-    def get_data_post_kc_misalignment(self, kc_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_data_post_kc_misalignment(self, kc_id: str, linked_kc_origins: np.ndarray[:, 3]) -> tuple[np.ndarray[:, 3], np.ndarray[:, 3], np.ndarray[:, 3], np.ndarray[:, 3, :]]:
         """
-        Get all resulting centers of mass of the panel after applying each evaluated misalignment for some kinematic coupling.
+        After applying each evaluated misalignment for some kinematic coupling, get more information about the panel based on the misalignment pose.
         :param kc_id: id of the kinematic coupling
-        :return: np.ndarray of resulting panel center of mass positions in array coordinates
+        :param linked_kc_origins: array of linked kinematic coupling origins in array coordinates, to be used for their external misalignment in subsequent steps
+        :return: tuple of resulting center of mass positions, kc origin positions, kc norm positions and linked kc origins in array coordinates
         """
         # Find the kinematic coupling object with the given id
         if kc_id not in self.kinematic_couplings:
@@ -141,51 +142,64 @@ class Panel():
         resulting_cm_positions = np.zeros((misalignment_poses.shape[0], 3))
         resulting_kc_origin_positions = translations_array_coords + kc_object.kc_origin
         resulting_kc_norm_positions = np.zeros((misalignment_poses.shape[0], 3))
+        resulting_linked_kc_positions = np.zeros((misalignment_poses.shape[0], 3, linked_kc_origins.shape[0]))
 
         # Apply misalignment rotations and translations
-        for i, (rotation_vector, translation_vector) in enumerate(zip(rotations_array_coords, translations_array_coords)):
+        for i, (rotation_vector_coords, translation_vector) in enumerate(zip(rotations_array_coords, translations_array_coords)):
             # Apply the rotation to the panel center of mass relative to kc_origin
-            rotated_cm = R.from_rotvec(rotation_vector).apply(self.panel_cm - kc_object.kc_origin) + kc_object.kc_origin
-            rotated_kc_norm = R.from_rotvec(rotation_vector).apply(kc_object.kc_origin_norm - kc_object.kc_origin) + kc_object.kc_origin
+            rotation_vector = R.from_rotvec(rotation_vector_coords).as_rotvec()
+            rotated_cm = rotation_vector.apply(self.panel_cm - kc_object.kc_origin) + kc_object.kc_origin
+            rotated_kc_norm = rotation_vector.apply(kc_object.kc_origin_norm - kc_object.kc_origin) + kc_object.kc_origin
+            rotated_linked_kc = rotation_vector.apply(linked_kc_origins - kc_object.kc_origin) + kc_object.kc_origin
 
             # Apply the translation to the rotated center of mass
             translated_cm = rotated_cm + translation_vector
             translated_kc_norm = rotated_kc_norm + translation_vector
+            translated_linked_kc = rotated_linked_kc + translation_vector
 
             # Store the resulting center of mass position in the array
             resulting_cm_positions[i] = translated_cm
             resulting_kc_norm_positions[i] = translated_kc_norm
+            resulting_linked_kc_positions[i] = translated_linked_kc.T
             
 
-        return resulting_cm_positions, resulting_kc_origin_positions, resulting_kc_norm_positions
+        return resulting_cm_positions, resulting_kc_origin_positions, resulting_kc_norm_positions, resulting_linked_kc_positions
+    
 
-
-    def get_data_post_external_misalignment(self, external_rot_trans: np.ndarray[6], kc_id: str, kc_misalignment_cm_positions, kc_misalignment_origin_positions, kc_misalignment_norm_positions) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        # Apply external rotation and translation
+    def get_data_post_external_misalignment(self, external_rot: R, external_trans: np.ndarray[3], kc_id: str, kc_misalignment_cm_positions, kc_misalignment_origin_positions, kc_misalignment_norm_positions, linked_kc_origin_positions) -> tuple[np.ndarray[:, 3], np.ndarray[:, 3], np.ndarray[:, 3], np.ndarray[:, 3, :]]:
+        """
+        Apply external rotation and translation to the misalignment data.
+        :param external_rot: Rotation object representing the external rotation
+        :param external_trans: Translation vector representing the external translation
+        :param kc_id: id of the kinematic coupling
+        :param kc_misalignment_cm_positions: Center of mass positions after misalignment
+        :param kc_misalignment_origin_positions: KC origin positions after misalignment
+        :param kc_misalignment_norm_positions: KC norm positions after misalignment
+        :param resulting_linked_kc_positions: Linked KC positions after misalignment
+        :return: tuple of resulting center of mass positions, KC origin positions, and KC norm positions
+        """
         if kc_id not in self.kinematic_couplings:
             raise ValueError(f"Kinematic coupling with id {kc_id} not found in set of kinematic couplings.")
+        
         # Find the kinematic coupling object with the given id
         kc_object = self.kinematic_couplings[kc_id]
 
-
-        # Extract the external rotation and translation vectors
-        external_rot_trans = external_rot_trans[kc_id]
-        external_rotation_vec = external_rot_trans[:3]  # [:3] rotation vector in array coordinates
-        external_translation_vec = external_rot_trans[3:]  # [3:] translation vector in array coordinates
-
-        # Apply the external rotation relative to kc_origin. Note that "translation_array_coords" is already relative to kc_origin.
-        resulting_cm_positions = R.from_rotvec(external_rotation_vec).apply(kc_misalignment_cm_positions - kc_object.kc_origin) + kc_object.kc_origin
-        resulting_kc_origin_positions = R.from_rotvec(external_rotation_vec).apply(kc_misalignment_origin_positions - kc_object.kc_origin) + kc_object.kc_origin
-        resulting_kc_norm_positions = R.from_rotvec(external_rotation_vec).apply(kc_misalignment_norm_positions - kc_object.kc_origin) + kc_object.kc_origin
+        # Apply the external rotation relative to kc_origin
+        resulting_cm_positions = external_rot.apply(kc_misalignment_cm_positions - kc_object.kc_origin) + kc_object.kc_origin
+        resulting_kc_origin_positions = external_rot.apply(kc_misalignment_origin_positions - kc_object.kc_origin) + kc_object.kc_origin
+        resulting_kc_norm_positions = external_rot.apply(kc_misalignment_norm_positions - kc_object.kc_origin) + kc_object.kc_origin
+        resulting_linked_kc_positions = np.zeros((linked_kc_origin_positions.shape[0], linked_kc_origin_positions.shape[1], linked_kc_origin_positions.shape[2]), dtype=float)
+        for i in range(resulting_linked_kc_positions.shape[2]):
+            resulting_linked_kc_positions[:, :, i] = external_rot.apply(resulting_linked_kc_positions[:, :, i] - kc_object.kc_origin) + kc_object.kc_origin
 
         # Apply the external translation
-        resulting_cm_positions += external_translation_vec
-        resulting_kc_origin_positions += external_translation_vec
-        resulting_kc_norm_positions += external_translation_vec
-        
-        return resulting_cm_positions, resulting_kc_origin_positions, resulting_kc_norm_positions
-        
+        resulting_cm_positions += external_trans
+        resulting_kc_origin_positions += external_trans
+        resulting_kc_norm_positions += external_trans
+        for i in range(resulting_linked_kc_positions.shape[2]):
+            resulting_linked_kc_positions[:, :, i] += external_trans
 
+        return resulting_cm_positions, resulting_kc_origin_positions, resulting_kc_norm_positions, resulting_linked_kc_positions
     
 
 class GroundPanel():
@@ -301,6 +315,23 @@ class LinkedPanelArray():
             raise ValueError("There is no unique root node for the provided kinematic couplings. In other words, there is no clear" \
             "starting point to evaluate misalignment propagation from for the panels linked by the provided kinematic couplings.")
         lowest_root_node_id = root_candidates_ids[0]
+
+        # FIXME: Loop through the nodes to which the lowest root node points, with edges in the subgraph
+        for child_node_id in subgraph.successors(lowest_root_node_id):
+            edge_data = self.graph[lowest_root_node_id][child_node_id]
+            if edge_data["type"] == "kc":
+                kc = edge_data["obj"]
+            if kc.misalignment_poses is None:
+                raise ValueError(f"Kinematic coupling with id {kc.kc_id} has not been solved for misalignment poses.")
+            # Propagate poses to the child panel
+            child_panel = self.graph.nodes[child_node_id]["obj"]
+            parent_panel = self.graph.nodes[lowest_root_node_id]["obj"]
+            linked_kc_origins = np.array([
+                self.graph[child_node_id][successor]["obj"].kc_origin
+                for successor in subgraph.successors(child_node_id)
+                if self.graph[child_node_id][successor]["type"] == "kc"
+                ])
+            resulting_cm_positions, resulting_kc_origin_positions, resulting_kc_norm_positions, resulting_linked_kc_positions = child_panel.get_data_post_kc_misalignment(kc.kc_id, linked_kc_origins)
 
 
         
