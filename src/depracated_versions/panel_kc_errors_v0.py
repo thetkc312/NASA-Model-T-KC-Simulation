@@ -1,8 +1,16 @@
+"""
+This depracated version of the code is for the panel and kinematic coupling error propagation process.
+
+Its process was designed and implemented by Trevor K. Carter as an
+employee of the CMR at BYU for a lab contract with NASA.
+It was last modified on 05/--/2025.
+"""
+
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import networkx as nx
 
-from chatgpt_demo import estimate_pose, plot_pose_estimation
+from pose_estimation import estimate_pose, plot_pose_estimation
 from itertools import product
 
 

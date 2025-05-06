@@ -1,3 +1,13 @@
+"""
+This script estimates the pose of a rigid body in 3D space given a set of points and their constraints to planes.
+It uses the least squares optimization method to find the best fit rotation and translation that aligns the points
+with their respective planes, taking into account slight misalignments. The results are visualized in a 3D plot.
+
+Its process was designed by Trevor K. Carter as an employee of the CMR at BYU for a lab contract with NASA.
+The implementation was written by ChatGPT 4o, then verified and modified by Trevor K. Carter.
+It was last modified on 05/--/2025.
+"""
+
 import numpy as np
 from scipy.optimize import least_squares
 from scipy.spatial.transform import Rotation as R
@@ -41,7 +51,7 @@ def estimate_pose(body_points, plane_normals, plane_misalignments):
     #t_opt = result.x[3:]
 #return rot_opt, t_opt
 
-def plot_pose_estimation(body_points, plane_normals, misalignments, rot_trans, true_rot=None, true_t=None, ax=None):
+def plot_pose_estimation(body_points, plane_normals, misalignments, rot_trans, true_rot=None, true_t=None, ax=None, plane_type="squares"):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -59,25 +69,46 @@ def plot_pose_estimation(body_points, plane_normals, misalignments, rot_trans, t
         P_true = true_rot.apply(P_orig) + true_t
         ax.scatter(*P_true.T, color='green', label='Transformed (True) Points')
 
-    # Visualize the planes as transparent squares centered on the projection of the estimated points onto the planes
-    for i, (p, n, m) in enumerate(zip(P_orig, plane_normals, misalignments)):
-        # Compute a point on the translated plane by projecting P_est onto the plane
-        P_est_point = P_est[i]
-        point_on_plane = P_est_point - np.dot(P_est_point - (p + m * n), n) * n
-        # Generate two orthogonal vectors in the plane
-        u = np.cross(n, np.array([1, 0, 0]))
-        if np.linalg.norm(u) < 1e-6:
-            u = np.cross(n, np.array([0, 1, 0]))
-        u /= np.linalg.norm(u)
-        v = np.cross(n, u)
-        size = 0.1
-        corners = [
-            point_on_plane + size * (u + v),
-            point_on_plane + size * (u - v),
-            point_on_plane + size * (-u - v),
-            point_on_plane + size * (-u + v)
-        ]
-        ax.add_collection3d(Poly3DCollection([corners], alpha=0.2, color='gray'))
+    size = 0.1 * np.max(np.linalg.norm(body_points[:, None, :] - body_points[None, :, :], axis=-1))
+
+    # Visualize the planes based on the plane_type parameter
+    if plane_type == "squares":
+        for i, (p, n, m) in enumerate(zip(P_orig, plane_normals, misalignments)):
+            # Compute a point on the translated plane by projecting P_est onto the plane
+            P_est_point = P_est[i]
+            point_on_plane = P_est_point - np.dot(P_est_point - (p + m * n), n) * n
+            # Generate two orthogonal vectors in the plane
+            u = np.cross(n, np.array([1, 0, 0]))
+            if np.linalg.norm(u) < 1e-6:
+                u = np.cross(n, np.array([0, 1, 0]))
+            u /= np.linalg.norm(u)
+            v = np.cross(n, u)
+            corners = [
+                point_on_plane + size * (u + v),
+                point_on_plane + size * (u - v),
+                point_on_plane + size * (-u - v),
+                point_on_plane + size * (-u + v)
+            ]
+            ax.add_collection3d(Poly3DCollection([corners], alpha=0.2, color='gray'))
+
+    elif plane_type == "circles":
+        for i, (p, n, m) in enumerate(zip(P_orig, plane_normals, misalignments)):
+            # Compute a point on the translated plane by projecting P_est onto the plane
+            P_est_point = P_est[i]
+            point_on_plane = P_est_point - np.dot(P_est_point - (p + m * n), n) * n
+            # Generate two orthogonal vectors in the plane
+            u = np.cross(n, np.array([1, 0, 0]))
+            if np.linalg.norm(u) < 1e-6:
+                u = np.cross(n, np.array([0, 1, 0]))
+            u /= np.linalg.norm(u)
+            v = np.cross(n, u)
+            # Generate points for a circle in the plane
+            theta = np.linspace(0, 2 * np.pi, 100)
+            circle_points = [point_on_plane + size * (np.cos(t) * u + np.sin(t) * v) for t in theta]
+            circle_points = np.array(circle_points)
+            ax.plot(circle_points[:, 0], circle_points[:, 1], circle_points[:, 2], color='gray', alpha=0.5)
+            # Fill the circle with a solid shade
+            ax.add_collection3d(Poly3DCollection([circle_points], alpha=0.2, color='gray'))
 
     # Set uniform scale for all axes
     all_points = np.vstack([P_orig, P_est])

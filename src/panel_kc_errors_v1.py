@@ -1,10 +1,18 @@
+"""
+This code is for the panel and kinematic coupling error propagation process.
+
+Its process was designed and implemented by Trevor K. Carter as an
+employee of the CMR at BYU for a lab contract with NASA.
+It was last modified on 05/06/2025.
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
 import networkx as nx
 
-from chatgpt_demo import estimate_pose, plot_pose_estimation
+from pose_estimation import estimate_pose, plot_pose_estimation
 
 
 
@@ -41,7 +49,7 @@ class KinematicCoupling():
         result = np.array(estimate_pose(self.kc_contact_points, self.kc_contact_norms, misalignment).x)
         return result
     
-    def plot_solve_kc_pose(self, misalignments: np.ndarray[6], ax=None):
+    def plot_solve_kc_pose(self, misalignments: np.ndarray[6], ax=None, x_to_z_axis: bool = False):
         """
         Solve then plot the kinematic coupling pose in 3D space. The x axis of the kc is shown as the graph's z axis.
         :param misalignments: row of 6 misalignment values to be evaluated, each corresponding to translation of a kc contact plane along its normal
@@ -54,9 +62,9 @@ class KinematicCoupling():
         # Solve kc_pose
         rot_trans_pose = self.solve_pose(misalignments)
 
-        self.plot_kc_pose(rot_trans_pose, misalignments, ax=ax)
+        self.plot_kc_pose(rot_trans_pose, misalignments, ax=ax, x_to_z_axis=x_to_z_axis)
 
-    def plot_kc_pose(self, rot_trans_pose, misalignments, ax=None):
+    def plot_kc_pose(self, rot_trans_pose, misalignments, ax=None, x_to_z_axis: bool = False):
         """
         Plot the kinematic coupling pose in 3D space. The x axis of the kc is shown as the graph's z axis.
         :param rot_trans_pose: rotation and translation vectors of the kinematic coupling pose
@@ -66,23 +74,27 @@ class KinematicCoupling():
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
+        if x_to_z_axis:
+            # Define the transformation matrix to swap axes: x -> z, z -> y, y -> x
+            transformation_matrix = np.array([
+                [0, 1, 0],  # y -> x
+                [0, 0, 1],  # z -> y
+                [1, 0, 0]   # x -> z
+            ])
 
-        # Define the transformation matrix to swap axes: x -> z, z -> y, y -> x
-        transformation_matrix = np.array([
-            [0, 1, 0],  # y -> x
-            [0, 0, 1],  # z -> y
-            [1, 0, 0]   # x -> z
-        ])
+            # Transform body_points and contact_norms
+            body_points = (transformation_matrix @ self.kc_contact_points.T).T
+            contact_norms = (transformation_matrix @ self.kc_contact_norms.T).T
 
-        # Transform body_points and contact_norms
-        body_points = (transformation_matrix @ self.kc_contact_points.T).T
-        contact_norms = (transformation_matrix @ self.kc_contact_norms.T).T
+            transformed_rotation_vector = transformation_matrix @ rot_trans_pose[:3]
+            transformed_translation_vector = transformation_matrix @ rot_trans_pose[3:]
+            kc_pose = np.concatenate([transformed_rotation_vector, transformed_translation_vector])
+        else:
+            body_points = self.kc_contact_points
+            contact_norms = self.kc_contact_norms
+            kc_pose = rot_trans_pose
 
-        transformed_rotation_vector = transformation_matrix @ rot_trans_pose[:3]
-        transformed_translation_vector = transformation_matrix @ rot_trans_pose[3:]
-        kc_pose = np.concatenate([transformed_rotation_vector, transformed_translation_vector])
-
-        plot_pose_estimation(body_points, contact_norms, misalignments, kc_pose, ax=ax)
+        plot_pose_estimation(body_points, contact_norms, misalignments, kc_pose, ax=ax, plane_type="circles")
     
 
     
@@ -211,13 +223,16 @@ class ShortArmKinematicCoupling(KinematicCoupling):
         a = np.cos(kc_groove_angle/2)
         b = np.sin(kc_groove_angle/2)
         contact_norms = np.array([
-            [a, 0, b],
-            [a, 0, -b],
-            [a, 0, b],
-            [a, 0, -b],
-            [0, b, -a],
-            [0, -b, -a]
+            [b, 0, a],
+            [b, 0, -a],
+            [b, 0, a],
+            [b, 0, -a],
+            [0, a, -b],
+            [0, -a, -b]
         ], dtype=float)
+
+        if kc_arm_height_offset < kc_interface_height_offset:
+            contact_norms[4:, 2] = -contact_norms[4:, 2]
 
         super().__init__(kc_id, kc_origin, kc_origin_norm, contact_points, contact_norms)
 
@@ -259,10 +274,10 @@ class SideArm3BallKinematicCoupling(KinematicCoupling):
         a = np.cos(kc_groove_angle/2)
         b = np.sin(kc_groove_angle/2)
         contact_norms = np.array([
-            [a, 0, b],
-            [a, 0, -b],
-            [a, b, 0],
-            [a, -b, 0],
+            [b, 0, a],
+            [b, 0, -a],
+            [b, a, 0],
+            [b, -a, 0],
             [0, 0, -1],
             [0, 0, -1]
         ], dtype=float)
@@ -564,69 +579,5 @@ class LinkedPanelArray():
         return result_table
 
 
-        
-def demo_kc_maxwell_creation():
-    big_kc = MaxwellKinematicCoupling("big_kc", np.array([0, 0, 0]), np.array([0, 0, 1]), 10, 5, -5)
-    short_kc = MaxwellKinematicCoupling("short_kc", np.array([0, 0, 0]), np.array([0, 0, 1]), 10, 3, -3)
-    small_kc = MaxwellKinematicCoupling("small_kc", np.array([0, 0, 0]), np.array([0, 0, 1]), 4, 2, -2)
-
-    misalignment_trans = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
-    misalignment_rot = np.array([0.5, -0.5, 0.5, -0.5, 0.5, -0.5])
-    np.random.seed(42)
-    misalignment_rand = 2 * np.random.rand(6) - 1
-    
-    fig, axes = plt.subplots(3, 3, subplot_kw={'projection': '3d'}, figsize=(10, 9))
-    view_angle = (15, 75)  # Set a consistent view angle for all subplots
-
-    ax = axes[0, 0]
-    ax.view_init(*view_angle)
-    big_kc.plot_solve_kc_pose(misalignment_trans, ax=ax)
-    ax.set_title("Big Maxwell Translational Misalignment", fontsize=9)
-
-    ax = axes[0, 1]
-    ax.view_init(*view_angle)
-    big_kc.plot_solve_kc_pose(misalignment_rot, ax=ax)
-    ax.set_title("Big Maxwell Rotational Misalignment", fontsize=9)
-
-    ax = axes[0, 2]
-    ax.view_init(*view_angle)
-    big_kc.plot_solve_kc_pose(misalignment_rand, ax=ax)
-    ax.set_title("Big Maxwell Random Misalignment", fontsize=9)
-
-    ax = axes[1, 0]
-    ax.view_init(*view_angle)
-    short_kc.plot_solve_kc_pose(misalignment_trans, ax=ax)
-    ax.set_title("Short Maxwell Translational Misalignment", fontsize=9)
-
-    ax = axes[1, 1]
-    ax.view_init(*view_angle)
-    short_kc.plot_solve_kc_pose(misalignment_rot, ax=ax)
-    ax.set_title("Short Maxwell Rotational Misalignment", fontsize=9)
-
-    ax = axes[1, 2]
-    ax.view_init(*view_angle)
-    short_kc.plot_solve_kc_pose(misalignment_rand, ax=ax)
-    ax.set_title("Short Maxwell Random Misalignment", fontsize=9)
-
-    ax = axes[2, 0]
-    ax.view_init(*view_angle)
-    small_kc.plot_solve_kc_pose(misalignment_trans, ax=ax)
-    ax.set_title("Small Maxwell Translational Misalignment", fontsize=9)
-
-    ax = axes[2, 1]
-    ax.view_init(*view_angle)
-    small_kc.plot_solve_kc_pose(misalignment_rot, ax=ax)
-    ax.set_title("Small Maxwell Rotational Misalignment", fontsize=9)
-
-    ax = axes[2, 2]
-    ax.view_init(*view_angle)
-    small_kc.plot_solve_kc_pose(misalignment_rand, ax=ax)
-    ax.set_title("Small Maxwell Random Misalignment", fontsize=9)
-
-    fig.tight_layout()
-    fig.subplots_adjust(hspace=0.2)
-    plt.show()
-
-
 if __name__ == "__main__":
-    demo_kc_maxwell_creation()
+    pass

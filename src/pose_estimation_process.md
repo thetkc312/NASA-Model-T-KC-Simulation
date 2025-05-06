@@ -1,4 +1,4 @@
-# Pose Estimation README
+# Pose Estimation Process Documentation
 
 This document provides a thorough, mathematical description of the algorithms and functions implemented in `pose_estimation.py`. It is designed to accompany the code in your research, explaining the underlying steps and notation.
 
