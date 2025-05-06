@@ -41,17 +41,17 @@ def estimate_pose(body_points, plane_normals, plane_misalignments):
     #t_opt = result.x[3:]
 #return rot_opt, t_opt
 
-def plot_pose_estimation(body_points, plane_normals, misalignments, result, true_rot=None, true_t=None, ax=None):
+def plot_pose_estimation(body_points, plane_normals, misalignments, rot_trans, true_rot=None, true_t=None, ax=None):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
     # Original and transformed points
     P_orig = np.array(body_points)
-    rot_vec = result.x[:3]
-    t = result.x[3:]
+    rot_vec = rot_trans[:3]
+    trans_vec = rot_trans[3:]
     rot = R.from_rotvec(rot_vec)
-    P_est = rot.apply(P_orig) + t
+    P_est = rot.apply(P_orig) + trans_vec
     ax.scatter(*P_orig.T, color='blue', label='Original Body Points')
     ax.scatter(*P_est.T, color='red', label='Transformed (Estimated) Points')
 
