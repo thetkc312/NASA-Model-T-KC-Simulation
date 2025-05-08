@@ -9,6 +9,7 @@ It was last modified on 05/06/2025.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from scipy.spatial.transform import Rotation as R
 import networkx as nx
 
@@ -40,6 +41,26 @@ class KinematicCoupling():
         self.kc_origin_norm = kc_origin_norm
         self.kc_contact_points = kc_contact_points
         self.kc_contact_norms = kc_contact_norms
+
+    def get_trans_kc_contact_points_norms(self):
+        kc_to_norm = self.kc_origin_norm - self.kc_origin
+
+        # Convert kc_origin_norm to a unit vector
+        kc_x_axis = kc_to_norm / np.linalg.norm(kc_to_norm)
+
+        # Define the panel coordinate system axes in array coordinates
+        kc_y_axis = np.cross([0, 0, 1], kc_x_axis)
+        kc_y_axis /= np.linalg.norm(kc_y_axis)
+        kc_z_axis = np.cross(kc_x_axis, kc_y_axis)
+
+        # Construct the rotation matrix from panel coordinates to array coordinates
+        panel_to_array_transformation = np.column_stack((kc_x_axis, kc_y_axis, kc_z_axis))
+
+        transformed_contact_points = (panel_to_array_transformation @ self.kc_contact_points.T).T + self.kc_origin
+        transformed_contact_norms = (panel_to_array_transformation @ self.kc_contact_norms.T).T
+
+        return transformed_contact_points, transformed_contact_norms
+
 
     def solve_pose(self, misalignment: np.ndarray[6]):
         """
@@ -409,7 +430,7 @@ class LinkedPanelArray():
         # Add the panel as a node in the graph
         self.graph.add_node(panel.panel_id, obj=panel, type="panel")
 
-    def link_panels(self, kc: KinematicCoupling, child_panel_id: str, parent_panel_id: str):
+    def link_panels(self, kc: KinematicCoupling, parent_panel_id: str, child_panel_id: str):
         """
         Link two panels together based on a kinematic coupling.
         :param kc: KinematicCoupling object linking the panels
@@ -577,6 +598,116 @@ class LinkedPanelArray():
         next_panel_misalignments(root_id, None)
 
         return result_table
+    
+    def visualize_panel_graph(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None):
+        """
+        Visualize the panel graph.
+        :param subgraph: subgraph to visualize (default is None, which visualizes the entire graph)
+        :param ax: axis to plot on (default is None, which creates a new figure)
+        """
+        if subgraph is None:
+            subgraph = self.graph
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(8, 8))
+
+        pos = {node_id: (data["obj"].panel_cm[0], data["obj"].panel_cm[1]) for node_id, data in subgraph.nodes(data=True)}
+
+        #pos = nx.spring_layout(subgraph)
+        nx.draw(subgraph, pos, with_labels=True, node_size=2000, node_color="lightblue", font_size=10, font_weight="bold", ax=ax)
+        edge_labels = nx.get_edge_attributes(subgraph, "kc_id").values()
+        edge_positions = {kc_obj.kc_id: kc_obj.kc_origin[0:2] for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
+        text_offset = 0.2
+
+        for label in edge_labels:
+            edge_pos = edge_positions[label]
+            ax.scatter(edge_pos[0], edge_pos[1], color="red", s=50, zorder=5)
+            ax.text(edge_pos[0]+text_offset, edge_pos[1], label, color="red", fontsize=10, va="bottom")
+        #nx.draw_networkx_edge_labels(subgraph, pos, edge_labels=edge_labels, font_color="red", ax=ax)
+
+    def visualize_panel_3d(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None):
+        """
+        Visualize the panel graph in 3D.
+        :param subgraph: subgraph to visualize (default is None, which visualizes the entire graph)
+        :param ax: axis to plot on (default is None, which creates a new figure)
+        """
+        if subgraph is None:
+            subgraph = self.graph
+        if ax is None:
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+        # Define a color gradient (e.g., from blue to red)
+        color_gradient = plt.cm.rainbow(np.linspace(0, 1, len(subgraph.nodes)))
+        # Create a mapping of node IDs to colors
+        color_mappings = {node_id: color_gradient[i] for i, node_id in enumerate(sorted(subgraph.nodes))}
+
+        for node_id, data in sorted(subgraph.nodes(data=True)):
+            panel_obj = data["obj"]
+            panel_color = color_mappings[node_id]
+            panel_pos = tuple(panel_obj.panel_cm)
+            ax.text(panel_pos[0], panel_pos[1], panel_pos[2], node_id, color="black", fontsize=12, va="bottom")
+            nearest_kc = None
+            for parent, _ in subgraph.in_edges(node_id):
+                kc_obj = subgraph[parent][node_id]["obj"]
+                kc_origin = kc_obj.kc_origin
+                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
+                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
+                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
+                kc_points, _ = kc_obj.get_trans_kc_contact_points_norms()
+                #kc_points = kc_obj.kc_contact_points + kc_origin
+                ax.scatter(kc_points[:, 0], kc_points[:, 1], kc_points[:, 2], c=panel_color, s=20)
+            for _, child in subgraph.out_edges(node_id):
+                kc_obj = subgraph[node_id][child]["obj"]
+                kc_origin = kc_obj.kc_origin
+                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
+                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
+                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
+            # Plotting a plane at the panel position
+            point_on_plane = panel_pos
+            n = np.array([0, 0, 1])  # Normal vector of the plane (z-axis)
+            # Generate two orthogonal vectors in the plane
+            u = np.cross(n, np.array([1, 0, 0]))
+            if np.linalg.norm(u) < 1e-6:
+                u = np.cross(n, np.array([0, 1, 0]))
+            u = u / np.linalg.norm(u)
+            v = np.cross(n, u)
+            # Generate points for a circle in the plane
+            theta = np.linspace(0, 2 * np.pi, 100)
+            circle_points = [point_on_plane + 0.5 * nearest_kc * (np.cos(t) * u + np.sin(t) * v) for t in theta]
+            circle_points = np.array(circle_points)
+            ax.plot(circle_points[:, 0], circle_points[:, 1], circle_points[:, 2], color=panel_color, alpha=0.5)
+            # Fill the circle with a solid shade
+            ax.add_collection3d(Poly3DCollection([circle_points], alpha=0.2, color=panel_color))
+
+        edge_labels = nx.get_edge_attributes(subgraph, "kc_id").values()
+        edge_positions = {kc_obj.kc_id: kc_obj.kc_origin for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
+        edge_normals = {kc_obj.kc_id: kc_obj.kc_origin_norm for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
+        for label in edge_labels:
+            edge_pos = edge_positions[label]
+            edge_norm = edge_normals[label] - edge_pos
+            ax.quiver(*edge_pos, *edge_norm, color="black", pivot='tail', alpha=0.5)
+            ax.text(*edge_pos, label, color="black", fontsize=9, va="bottom")
+
+        # Set equal scaling for all axes
+        x_limits = ax.get_xlim()
+        y_limits = ax.get_ylim()
+        z_limits = ax.get_zlim()
+
+        x_range = x_limits[1] - x_limits[0]
+        y_range = y_limits[1] - y_limits[0]
+        z_range = z_limits[1] - z_limits[0]
+
+        max_range = max(x_range, y_range, z_range)
+
+        x_mid = (x_limits[0] + x_limits[1]) / 2
+        y_mid = (y_limits[0] + y_limits[1]) / 2
+        z_mid = (z_limits[0] + z_limits[1]) / 2
+
+        ax.set_xlim(x_mid - max_range / 2, x_mid + max_range / 2)
+        ax.set_ylim(y_mid - max_range / 2, y_mid + max_range / 2)
+        ax.set_zlim(z_mid - max_range / 2, z_mid + max_range / 2)
+            
+
 
 
 if __name__ == "__main__":
