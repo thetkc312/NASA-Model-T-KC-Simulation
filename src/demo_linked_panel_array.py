@@ -64,6 +64,30 @@ def demo_zigzag_panel_array():
     plt.show()
 
 
+def demo_modelt_petal_array():
+    linked_panels = LinkedPanelArray("pent", np.array([-1, 0, 0], dtype=float))
+
+    panel_1 = Panel("a1", np.array([1, 0, 0], dtype=float))
+    linked_panels.add_panel(panel_1)
+    panel_2 = Panel("2", np.array([3, 0, 0], dtype=float))
+    linked_panels.add_panel(panel_2)
+    panel_3 = Panel("3", np.array([5, 0, 0], dtype=float))
+    linked_panels.add_panel(panel_3)
+
+    kc_g_1 = MaxwellKinematicCoupling("g_1", np.array([0, 0, 0], dtype=float), np.array([1, 0, 0], dtype=float), 1, 0.5, -0.5)
+    linked_panels.link_panels(kc_g_1, "pent", "1")
+    kc_1_2 = MaxwellKinematicCoupling("1_2", np.array([2, 0, 0], dtype=float), np.array([3, 0, 0], dtype=float), 1, 0.5, -0.5)
+    linked_panels.link_panels(kc_1_2, "1", "2")
+    kc_2_3 = MaxwellKinematicCoupling("2_3", np.array([4, 0, 0], dtype=float), np.array([5, 0, 0], dtype=float), 1, 0.5, -0.5)
+    linked_panels.link_panels(kc_2_3, "2", "3")
+
+    #linked_panels.visualize_panel_graph()
+    #plt.show()
+
+    linked_panels.visualize_panel_3d()
+    plt.show()
+
+
 
 if __name__ == "__main__":
     demo_linear_panel_array()
