@@ -626,7 +626,7 @@ class LinkedPanelArray():
             ax.text(edge_pos[0]+text_offset, edge_pos[1], label, color="red", fontsize=10, va="bottom")
         #nx.draw_networkx_edge_labels(subgraph, pos, edge_labels=edge_labels, font_color="red", ax=ax)
 
-    def visualize_panel_3d(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None):
+    def visualize_panel_3d(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None, font_modifier: float = 1.0):
         """
         Visualize the panel graph in 3D.
         :param subgraph: subgraph to visualize (default is None, which visualizes the entire graph)
@@ -647,7 +647,7 @@ class LinkedPanelArray():
             panel_obj = data["obj"]
             panel_color = color_mappings[node_id]
             panel_pos = tuple(panel_obj.panel_cm)
-            ax.text(panel_pos[0], panel_pos[1], panel_pos[2], node_id, color="black", fontsize=12, va="bottom")
+            ax.text(panel_pos[0], panel_pos[1], panel_pos[2], node_id, color="black", fontsize=12*font_modifier, va="bottom")
             nearest_kc = None
             for parent, _ in subgraph.in_edges(node_id):
                 kc_obj = subgraph[parent][node_id]["obj"]
@@ -688,7 +688,7 @@ class LinkedPanelArray():
             edge_pos = edge_positions[label]
             edge_norm = edge_normals[label] - edge_pos
             ax.quiver(*edge_pos, *edge_norm, color="black", pivot='tail', alpha=0.5)
-            ax.text(*edge_pos, label, color="black", fontsize=9, va="bottom")
+            ax.text(*edge_pos, label, color="black", fontsize=9*font_modifier, va="bottom")
 
         # Set equal scaling for all axes
         x_limits = ax.get_xlim()
