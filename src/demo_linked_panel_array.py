@@ -37,8 +37,26 @@ def demo_linear_panel_array():
     #linked_panels.visualize_panel_graph()
     #plt.show()
 
-    linked_panels.visualize_panel_3d()
+    linked_panels.visualize_array_3d()
     plt.show()
+
+    root_node, linked_panels_sub = linked_panels.get_kc_path(["g_1", "1_2"])
+    linked_panels.visualize_array_3d(linked_panels_sub)
+    plt.show()
+
+    default_pose = linked_panels.get_default_poses(root_node, linked_panels_sub)
+    print(default_pose)
+
+    misalignment_1 = {'g_1': np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=float),
+                     '1_2': np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=float)}
+    pose1_df = linked_panels.get_misalignment_propagated_poses(root_node, linked_panels_sub, misalignment_1)
+    print(pose1_df)
+    
+    misalignments_2 = {'g_1': np.array([0.0, 0.0, 0.0, 0.0, 0.1, 0.1], dtype=float),
+                     '1_2': np.array([0.0, 0.0, 0.0, 0.0, -0.1, -0.1], dtype=float)}
+    pose2_df = linked_panels.get_misalignment_propagated_poses(root_node, linked_panels_sub, misalignments_2)
+    print(pose2_df)
+
 
 def demo_zigzag_panel_array():
     linked_panels = LinkedPanelArray("ground", np.array([-1, 0, 0], dtype=float))
@@ -60,7 +78,7 @@ def demo_zigzag_panel_array():
     #linked_panels.visualize_panel_graph()
     #plt.show()
 
-    linked_panels.visualize_panel_3d()
+    linked_panels.visualize_array_3d()
     plt.show()
 
 
@@ -93,7 +111,7 @@ def demo_modelt_series_array():
     #linked_panels.visualize_panel_graph()
     #plt.show()
 
-    series_panel_array.visualize_panel_3d()
+    series_panel_array.visualize_array_3d()
     plt.show()
 
 def demo_modelt_montecarloset_array():
@@ -165,13 +183,13 @@ def demo_modelt_montecarloset_array():
     #linked_panels.visualize_panel_graph()
     #plt.show()
 
-    panel_collection_array.visualize_panel_3d(font_modifier=0.6)
+    panel_collection_array.visualize_array_3d(font_modifier=0.6)
     plt.show()
 
 
 
 if __name__ == "__main__":
-    #demo_linear_panel_array()
+    demo_linear_panel_array()
     #demo_zigzag_panel_array()
     #demo_modelt_series_array()
-    demo_modelt_montecarloset_array()
+    #demo_modelt_montecarloset_array()

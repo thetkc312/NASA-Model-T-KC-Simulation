@@ -497,6 +497,90 @@ class LinkedPanelArray():
 
         return lowest_root_node_id, subgraph
     
+    
+    def get_default_poses(self, root_id: str, subgraph: nx.classes.DiGraph) -> pd.DataFrame:
+        """
+        Get a dataframe indicating the default poses of the panels and kinematic couplings in the subgraph.
+        :param root_id: id of the root node
+        :param subgraph: subgraph containing the relevant nodes and edges
+        :return: DataFrame containing the misalignments (none) and the resulting (default) poses of the panels and kinematic couplings in the subgraph
+        """
+        column_tuples = [
+            ("kc_misalignment", "1"), ("kc_misalignment", "2"), ("kc_misalignment", "3"),
+            ("kc_misalignment", "4"), ("kc_misalignment", "5"), ("kc_misalignment", "6"),
+            ("kc_origin_final_pos", "x"), ("kc_origin_final_pos", "y"), ("kc_origin_final_pos", "z"),
+            ("kc_norm_final_pos", "x"), ("kc_norm_final_pos", "y"), ("kc_norm_final_pos", "z"),
+            ("panel_cm_final_pos", "x"), ("panel_cm_final_pos", "y"), ("panel_cm_final_pos", "z"),
+            ("net_rotation", "x"), ("net_rotation", "y"), ("net_rotation", "z")
+        ]
+        multiindex = pd.MultiIndex.from_tuples(column_tuples, names=["Category", "Subcategory"])
+
+        # Initialize the DataFrame with the multiindex and the number of rows equal to the number of nodes in the subgraph
+        panel_ids = sorted(subgraph.nodes)
+        result_table = pd.DataFrame(columns=multiindex, index=panel_ids)
+        
+        def next_panel_data(parent_panel_id):
+            children_of_parent = sorted(subgraph.successors(parent_panel_id))
+            for child_panel_id in children_of_parent:
+                # Get the panel object
+                child_panel = subgraph.nodes[child_panel_id]["obj"]
+                child_panel_cm = child_panel.panel_cm
+                # Fill out the result table with the data from the panel and kinematic coupling objects
+                kc_object = subgraph[parent_panel_id][child_panel_id]["obj"]
+                kc_origin = kc_object.kc_origin
+                kc_norm = kc_object.kc_origin_norm
+
+                result_table.loc[child_panel_id] = pd.Series({
+                    ("kc_misalignment", "1"): 0.0,
+                    ("kc_misalignment", "2"): 0.0,
+                    ("kc_misalignment", "3"): 0.0,
+                    ("kc_misalignment", "4"): 0.0,
+                    ("kc_misalignment", "5"): 0.0,
+                    ("kc_misalignment", "6"): 0.0,
+                    ("kc_origin_final_pos", "x"): kc_origin[0],
+                    ("kc_origin_final_pos", "y"): kc_origin[1],
+                    ("kc_origin_final_pos", "z"): kc_origin[2],
+                    ("kc_norm_final_pos", "x"): kc_norm[0],
+                    ("kc_norm_final_pos", "y"): kc_norm[1],
+                    ("kc_norm_final_pos", "z"): kc_norm[2],
+                    ("panel_cm_final_pos", "x"): child_panel_cm[0],
+                    ("panel_cm_final_pos", "y"): child_panel_cm[1],
+                    ("panel_cm_final_pos", "z"): child_panel_cm[2],
+                    ("net_rotation", "x"): 0.0,
+                    ("net_rotation", "y"): 0.0,
+                    ("net_rotation", "z"): 0.0,
+                })
+
+                if len([subgraph.successors(child_panel_id)]) > 0:
+                    # If the child panel has successors, recursively call the function to process those successors and propagate the misalignment poses
+                    next_panel_data(child_panel_id)
+    
+        # The root node is the first node in the subgraph. It has no misalignment values or kc
+        result_table.loc[root_id] = pd.Series({
+            ("kc_misalignment", "1"): np.nan,
+            ("kc_misalignment", "2"): np.nan,
+            ("kc_misalignment", "3"): np.nan,
+            ("kc_misalignment", "4"): np.nan,
+            ("kc_misalignment", "5"): np.nan,
+            ("kc_misalignment", "6"): np.nan,
+            ("kc_origin_final_pos", "x"): np.nan,
+            ("kc_origin_final_pos", "y"): np.nan,
+            ("kc_origin_final_pos", "z"): np.nan,
+            ("kc_norm_final_pos", "x"): np.nan,
+            ("kc_norm_final_pos", "y"): np.nan,
+            ("kc_norm_final_pos", "z"): np.nan,
+            ("panel_cm_final_pos", "x"): subgraph.nodes[root_id]["obj"].panel_cm[0],
+            ("panel_cm_final_pos", "y"): subgraph.nodes[root_id]["obj"].panel_cm[1],
+            ("panel_cm_final_pos", "z"): subgraph.nodes[root_id]["obj"].panel_cm[2],
+            ("net_rotation", "x"): 0.0,
+            ("net_rotation", "y"): 0.0,
+            ("net_rotation", "z"): 0.0,
+        })
+        next_panel_data(root_id)
+
+        return result_table
+    
+    
     # TODO: Add a way to calculate the propagated pose for arbitrary points on the panel
     def get_misalignment_propagated_poses(self, root_id: str, subgraph: nx.classes.DiGraph, misalignment_dict: dict[str, np.ndarray[6]]) -> pd.DataFrame:
         """
@@ -514,7 +598,8 @@ class LinkedPanelArray():
             ("kc_misalignment", "4"), ("kc_misalignment", "5"), ("kc_misalignment", "6"),
             ("kc_origin_final_pos", "x"), ("kc_origin_final_pos", "y"), ("kc_origin_final_pos", "z"),
             ("kc_norm_final_pos", "x"), ("kc_norm_final_pos", "y"), ("kc_norm_final_pos", "z"),
-            ("panel_cm_final_pos", "x"), ("panel_cm_final_pos", "y"), ("panel_cm_final_pos", "z")
+            ("panel_cm_final_pos", "x"), ("panel_cm_final_pos", "y"), ("panel_cm_final_pos", "z"),
+            ("net_rotation", "x"), ("net_rotation", "y"), ("net_rotation", "z")
         ]
         multiindex = pd.MultiIndex.from_tuples(column_tuples, names=["Category", "Subcategory"])
 
@@ -522,16 +607,18 @@ class LinkedPanelArray():
         result_table = pd.DataFrame(columns=multiindex, index=sorted(subgraph.nodes))
 
         def next_panel_misalignments(parent_panel_id, ext_rot, linked_kc_shifts=None):
+            children_of_parent = sorted(subgraph.successors(parent_panel_id))
             if linked_kc_shifts is None:
-                linked_kc_shifts = [None] * len(subgraph.successors(parent_panel_id))
-            for child_panel_id, child_panel_kc_shift in zip(sorted(subgraph.successors(parent_panel_id)), linked_kc_shifts):
+                linked_kc_shifts = [None] * len(children_of_parent)
+            for child_panel_id, child_panel_kc_shift in zip(children_of_parent, linked_kc_shifts):
                 # Get the panel object
-                child_panel = self.graph.nodes[child_panel_id]["obj"]
+                child_panel = subgraph.nodes[child_panel_id]["obj"]
                 # Get the kinematic coupling id
                 kc_id = subgraph[parent_panel_id][child_panel_id]["kc_id"]
                 kc_misalignments = misalignment_dict[kc_id]
-                if len(subgraph.successors(child_panel_id)) > 0:
-                    linked_kc_ids = [subgraph[child_panel_id][grandchild_panel]["kc_id"] for grandchild_panel in sorted(subgraph.successors(child_panel_id))]
+                children_of_child = sorted(subgraph.successors(child_panel_id))
+                if len(children_of_child) > 0:
+                    linked_kc_ids = [subgraph[child_panel_id][grandchild_panel]["kc_id"] for grandchild_panel in children_of_child]
                     linked_kc_origins = [
                         subgraph[child_panel_id][self.kc_id_to_nodes[linked_kc_id][1]]["obj"].kc_origin
                         for linked_kc_id in linked_kc_ids
@@ -554,6 +641,9 @@ class LinkedPanelArray():
                         ("panel_cm_final_pos", "x"): resulting_cm[0],
                         ("panel_cm_final_pos", "y"): resulting_cm[1],
                         ("panel_cm_final_pos", "z"): resulting_cm[2],
+                        ("net_rotation", "x"): net_rotation.as_rotvec()[0],
+                        ("net_rotation", "y"): net_rotation.as_rotvec()[1],
+                        ("net_rotation", "z"): net_rotation.as_rotvec()[2],
                     })
                     # If the child panel has successors, recursively call the function to process those successors and propagate the misalignment poses
                     next_panel_misalignments(child_panel_id, net_rotation, resulting_linked_kc_shifts)
@@ -577,6 +667,9 @@ class LinkedPanelArray():
                         ("panel_cm_final_pos", "x"): resulting_cm[0],
                         ("panel_cm_final_pos", "y"): resulting_cm[1],
                         ("panel_cm_final_pos", "z"): resulting_cm[2],
+                        ("net_rotation", "x"): net_rotation.as_rotvec()[0],
+                        ("net_rotation", "y"): net_rotation.as_rotvec()[1],
+                        ("net_rotation", "z"): net_rotation.as_rotvec()[2],
                     })
         
         # The root node is the first node in the subgraph. It has no misalignment values or kc
@@ -596,10 +689,89 @@ class LinkedPanelArray():
             ("panel_cm_final_pos", "x"): subgraph.nodes[root_id]["obj"].panel_cm[0],
             ("panel_cm_final_pos", "y"): subgraph.nodes[root_id]["obj"].panel_cm[1],
             ("panel_cm_final_pos", "z"): subgraph.nodes[root_id]["obj"].panel_cm[2],
+            ("net_rotation", "x"): 0.0,
+            ("net_rotation", "y"): 0.0,
+            ("net_rotation", "z"): 0.0,
         })
         next_panel_misalignments(root_id, None)
 
         return result_table
+    
+
+    def pose_to_optical_misalignment(self, root_id: str, subgraph: nx.classes.DiGraph, pose_df: pd.DataFrame, default_pose_df: pd.DataFrame | None = None) -> pd.DataFrame:
+        """
+        Convert the pose DataFrame, with world coordinate poses, to misalignments relative
+        to the root panel. For each panel, a new coordinate system is defined where:
+        - The z-axis is aligned with the root panel's normal pointing upwards.
+        - The x-axis points from the root panel's center of mass (CM) to the default position of the child panel's CM.
+        - The y-axis is defined as the cross product of the z-axis and x-axis.
+
+        In this coordinate system, misalignment values are provided for:
+        - radial_distance: Distance from the root panel CM to the default position of the child panel CM.
+        - radial_extention: Translation along the x-axis of the new coordinate system.
+        - radial_shift: Translation along the y-axis of the new coordinate system.
+        - elevation_shift: Translation along the z-axis of the new coordinate system.
+        - yaw: Rotation about the z-axis of the new coordinate system.
+        - pitch: Rotation about the y-axis of the new coordinate system.
+        - roll: Rotation about the x-axis of the new coordinate system.
+
+        :param root_id: ID of the root node.
+        :param subgraph: Subgraph containing the nodes and edges.
+        :param pose_df: DataFrame containing the misalignment poses of the panels and kinematic couplings in the subgraph.
+        :param default_pose_df: DataFrame containing the default poses of the panels and kinematic couplings in the subgraph 
+                                (default is None, which solves default_pose_df internally).
+        :return: DataFrame containing the misalignment values for each panel relative to the root panel.
+        """
+        if default_pose_df is None:
+            default_pose_df = self.get_default_poses(root_id, subgraph)
+
+        # Define the columns and index for the new DataFrame
+        columns = ["radial_distance", "radial_extention", "radial_shift", "elevation_shift", "yaw", "pitch", "roll"]
+        index = pose_df.index.difference([root_id])
+        misalignment_df = pd.DataFrame(columns=columns, index=index)
+
+        # Get the root panel's center of mass, which serves as the origin for the new coordinate system
+        root_panel_cm = pose_df.loc[root_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+
+        # Iterate through each panel in the pose DataFrame
+        for panel_id in index:
+            # Get the pose and default pose for the panel
+            pose = pose_df.loc[panel_id]
+            default_pose = default_pose_df.loc[panel_id]
+
+            # The direction of this vector is the x-axis of the new coordinate system
+            root_to_def_cm = default_pose[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+            z_axis = np.array([0, 0, 1])  # Root panel's normal
+            x_axis = root_to_def_cm / np.linalg.norm(root_to_def_cm)  # Vector from root CM to child CM
+            y_axis = np.cross(z_axis, x_axis)  # Orthogonal vector to complete the right-handed system
+            y_axis /= np.linalg.norm(y_axis)
+            root_to_pose_cm = pose[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+            shifts = np.array([x_axis, y_axis, z_axis]) @ (root_to_pose_cm - root_panel_cm)
+            radial_extention, radial_shift, elevation_shift = shifts
+            radial_distance = np.linalg.norm(root_to_def_cm)
+
+            # Calculate rotations (yaw, pitch, roll)
+            rotation_vector = pose[("net_rotation", ["x", "y", "z"])].values
+            rotation = R.from_rotvec(rotation_vector)
+            yaw, pitch, roll = rotation.as_euler('ZYX', degrees=False)
+
+            # Store the misalignment values in the new DataFrame
+            misalignment_df.loc[panel_id] = [
+                radial_distance, radial_extention, radial_shift, elevation_shift, yaw, pitch, roll
+            ]
+
+        return misalignment_df
+    
+
+    def _angle_between(v1, v2):
+        """
+        Returns the angle in radians between vectors 'v1' and 'v2'
+        https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
+        """
+        v1_u = v1 / np.linalg.norm(v1)
+        v2_u = v2 / np.linalg.norm(v2)
+        return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
     
     def visualize_panel_graph(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None):
         """
@@ -626,7 +798,7 @@ class LinkedPanelArray():
             ax.text(edge_pos[0]+text_offset, edge_pos[1], label, color="red", fontsize=10, va="bottom")
         #nx.draw_networkx_edge_labels(subgraph, pos, edge_labels=edge_labels, font_color="red", ax=ax)
 
-    def visualize_panel_3d(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None, font_modifier: float = 1.0):
+    def visualize_array_3d(self, subgraph: nx.classes.DiGraph = None, ax: plt.Axes = None, font_modifier: float = 1.0):
         """
         Visualize the panel graph in 3D.
         :param subgraph: subgraph to visualize (default is None, which visualizes the entire graph)
@@ -708,6 +880,82 @@ class LinkedPanelArray():
         ax.set_xlim(x_mid - max_range / 2, x_mid + max_range / 2)
         ax.set_ylim(y_mid - max_range / 2, y_mid + max_range / 2)
         ax.set_zlim(z_mid - max_range / 2, z_mid + max_range / 2)
+
+    def visualize_posed_array_3d(self, subgraph: nx.classes.DiGraph, default_pose_df: pd.DataFrame, pose_df: pd.DataFrame, ax: plt.Axes = None, font_modifier: float = 1.0):
+        """
+        Visualize the panel graph in 3D with the poses from the pose_df.
+        """
+        if ax is None:
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+        # Define a color gradient (e.g., from blue to red)
+        color_gradient = plt.cm.rainbow(np.linspace(0, 1, len(subgraph.nodes)))
+        # Create a mapping of node IDs to colors
+        color_mappings = {node_id: color_gradient[i] for i, node_id in enumerate(sorted(subgraph.nodes))}
+
+        # TODO: Update desired graph objects, change to visualize misaligned pose
+        for node_id, data in sorted(subgraph.nodes(data=True)):
+            panel_obj = data["obj"]
+            panel_color = color_mappings[node_id]
+            panel_pos = tuple(panel_obj.panel_cm)
+            ax.text(panel_pos[0], panel_pos[1], panel_pos[2], node_id, color="black", fontsize=12*font_modifier, va="bottom")
+            nearest_kc = None
+            for parent, _ in subgraph.in_edges(node_id):
+                kc_obj = subgraph[parent][node_id]["obj"]
+                kc_origin = kc_obj.kc_origin
+                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
+                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
+                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
+                kc_points, _ = kc_obj.get_trans_kc_contact_points_norms()
+                #kc_points = kc_obj.kc_contact_points + kc_origin
+                ax.scatter(kc_points[:, 0], kc_points[:, 1], kc_points[:, 2], c=panel_color, s=20)
+            for _, child in subgraph.out_edges(node_id):
+                kc_obj = subgraph[node_id][child]["obj"]
+                kc_origin = kc_obj.kc_origin
+                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
+                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
+                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
+            # Plotting a plane at the panel position
+            point_on_plane = panel_pos
+            n = np.array([0, 0, 1])  # Normal vector of the plane (z-axis)
+            # Generate two orthogonal vectors in the plane
+            u = np.cross(n, np.array([1, 0, 0]))
+            if np.linalg.norm(u) < 1e-6:
+                u = np.cross(n, np.array([0, 1, 0]))
+            u = u / np.linalg.norm(u)
+            v = np.cross(n, u)
+            # Generate points for a circle in the plane
+            theta = np.linspace(0, 2 * np.pi, 100)
+            circle_points = [point_on_plane + 0.5 * nearest_kc * (np.cos(t) * u + np.sin(t) * v) for t in theta]
+            circle_points = np.array(circle_points)
+            ax.plot(circle_points[:, 0], circle_points[:, 1], circle_points[:, 2], color=panel_color, alpha=0.5)
+            # Fill the circle with a solid shade
+            ax.add_collection3d(Poly3DCollection([circle_points], alpha=0.2, color=panel_color))
+
+        edge_labels = nx.get_edge_attributes(subgraph, "kc_id").values()
+        edge_positions = {kc_obj.kc_id: kc_obj.kc_origin for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
+        edge_normals = {kc_obj.kc_id: kc_obj.kc_origin_norm for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
+        for label in edge_labels:
+            edge_pos = edge_positions[label]
+            edge_norm = edge_normals[label] - edge_pos
+            ax.quiver(*edge_pos, *edge_norm, color="black", pivot='tail', alpha=0.5)
+            ax.text(*edge_pos, label, color="black", fontsize=9*font_modifier, va="bottom")
+
+        # Set equal scaling for x and y axes
+        x_limits = ax.get_xlim()
+        y_limits = ax.get_ylim()
+
+        x_range = x_limits[1] - x_limits[0]
+        y_range = y_limits[1] - y_limits[0]
+
+        max_range = max(x_range, y_range)
+
+        x_mid = (x_limits[0] + x_limits[1]) / 2
+        y_mid = (y_limits[0] + y_limits[1]) / 2
+
+        ax.set_xlim(x_mid - max_range / 2, x_mid + max_range / 2)
+        ax.set_ylim(y_mid - max_range / 2, y_mid + max_range / 2)
             
 
 
