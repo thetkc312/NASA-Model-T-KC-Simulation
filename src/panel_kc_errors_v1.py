@@ -257,7 +257,8 @@ class ShortArmKinematicCoupling(KinematicCoupling):
 
         super().__init__(kc_id, kc_origin, kc_origin_norm, contact_points, contact_norms)
 
-    
+
+# TODO: Add provisions for negative length arms (the arm actually goes over the parent panel, not the child panel)
 class SideArm3BallKinematicCoupling(KinematicCoupling):
     """
     A class to represent a left arm kinematic coupling. It is a pre-determined kinematic coupling configuration that can prepared with fewer parameters than defining all contact points and contact normals.
@@ -496,6 +497,7 @@ class LinkedPanelArray():
 
         return lowest_root_node_id, subgraph
     
+    # TODO: Add a way to calculate the propagated pose for arbitrary points on the panel
     def get_misalignment_propagated_poses(self, root_id: str, subgraph: nx.classes.DiGraph, misalignment_dict: dict[str, np.ndarray[6]]) -> pd.DataFrame:
         """
         Propagate the misalignment poses for multiple kinematic couplings based on all combinations of misalignment values.
