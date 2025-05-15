@@ -146,7 +146,7 @@ class MaxwellKinematicCoupling(KinematicCoupling):
             [0, kc_interface_length/2, kc_base_height_offset],
             [0, kc_peak_pos, kc_peak_height_offset],
             [0, kc_peak_pos, kc_peak_height_offset]
-        ], dtype=float)
+        ], dtype=np.float64)
 
         x_phi = kc_groove_angle/2
         if kc_groove_orientation == "centroid":
@@ -174,7 +174,7 @@ class MaxwellKinematicCoupling(KinematicCoupling):
             lb_2,
             p_1,
             p_2
-        ], dtype=float)
+        ], dtype=np.float64)
 
         super().__init__(kc_id, kc_origin, kc_origin_norm, contact_points, contact_norms)
 
@@ -191,14 +191,14 @@ class MaxwellKinematicCoupling(KinematicCoupling):
             • make angle theta with the +x axis,
             • and are orthogonal to v.
         """
-        v_cent_to_groove = np.asarray(v_cent_to_groove, dtype=float)
+        v_cent_to_groove = np.asarray(v_cent_to_groove, dtype=np.float64)
         # ensure it's orthogonal to x-axis:
-        if abs(v_cent_to_groove[0]) > 1e-8:
+        if abs(v_cent_to_groove[0]) > 1e-17:
             raise ValueError("Input vector must have zero x-component")
         # normalize v in its own (yz) subspace
         vy, vz = v_cent_to_groove[1], v_cent_to_groove[2]
         mag_yz = np.hypot(vy, vz)
-        if mag_yz < 1e-8:
+        if mag_yz < 1e-17:
             raise ValueError("Input vector must not be zero in its yz-components")
         vy /= mag_yz
         vz /= mag_yz
@@ -239,7 +239,7 @@ class ShortArmKinematicCoupling(KinematicCoupling):
             [0, kc_interface_length/2, kc_interface_height_offset],
             [kc_arm_length, kc_arm_pos, kc_arm_height_offset],
             [kc_arm_length, kc_arm_pos, kc_arm_height_offset]
-        ], dtype=float)
+        ], dtype=np.float64)
 
         a = np.cos(kc_groove_angle/2)
         b = np.sin(kc_groove_angle/2)
@@ -250,7 +250,7 @@ class ShortArmKinematicCoupling(KinematicCoupling):
             [b, 0, -a],
             [0, a, -b],
             [0, -a, -b]
-        ], dtype=float)
+        ], dtype=np.float64)
 
         if kc_arm_height_offset < kc_interface_height_offset:
             contact_norms[4:, 2] = -contact_norms[4:, 2]
@@ -291,7 +291,7 @@ class SideArm3BallKinematicCoupling(KinematicCoupling):
             [0, arm_pos, 0],
             [0, arm_pos, 0],
             [kc_arm_length * np.sin(kc_interface_arm_angle), arm_pos + kc_arm_length * np.cos(kc_interface_arm_angle) * (-1 if kc_arm_side == "left" else 1), kc_arm_ball_height_offset],
-        ], dtype=float)
+        ], dtype=np.float64)
 
         a = np.cos(kc_groove_angle/2)
         b = np.sin(kc_groove_angle/2)
@@ -302,7 +302,7 @@ class SideArm3BallKinematicCoupling(KinematicCoupling):
             [b, -a, 0],
             [0, 0, -1],
             [0, 0, -1]
-        ], dtype=float)
+        ], dtype=np.float64)
 
         super().__init__(kc_id, kc_origin, kc_origin_norm, contact_points, contact_norms)
 
@@ -517,7 +517,7 @@ class LinkedPanelArray():
 
         # Initialize the DataFrame with the multiindex and the number of rows equal to the number of nodes in the subgraph
         panel_ids = sorted(subgraph.nodes)
-        result_table = pd.DataFrame(columns=multiindex, index=panel_ids)
+        result_table = pd.DataFrame(columns=multiindex, index=panel_ids, dtype=np.float64)
         
         def next_panel_data(parent_panel_id):
             children_of_parent = sorted(subgraph.successors(parent_panel_id))
@@ -604,7 +604,7 @@ class LinkedPanelArray():
         multiindex = pd.MultiIndex.from_tuples(column_tuples, names=["Category", "Subcategory"])
 
         # Initialize the DataFrame with the multiindex and the number of rows equal to the number of nodes in the subgraph
-        result_table = pd.DataFrame(columns=multiindex, index=sorted(subgraph.nodes))
+        result_table = pd.DataFrame(columns=multiindex, index=sorted(subgraph.nodes), dtype=np.float64)
 
         def next_panel_misalignments(parent_panel_id, ext_rot, linked_kc_shifts=None):
             children_of_parent = sorted(subgraph.successors(parent_panel_id))
@@ -736,29 +736,33 @@ class LinkedPanelArray():
         # Iterate through each panel in the pose DataFrame
         for panel_id in index:
             # Get the pose and default pose for the panel
-            pose = pose_df.loc[panel_id]
-            default_pose = default_pose_df.loc[panel_id]
+            #pose = pose_df.loc[panel_id]
+            #default_pose = default_pose_df.loc[panel_id]
 
             # The direction of this vector is the x-axis of the new coordinate system
-            root_to_def_cm = default_pose[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
-            z_axis = np.array([0, 0, 1])  # Root panel's normal
+            root_to_def_cm = default_pose_df.loc[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values - root_panel_cm
+            z_axis = np.array([0, 0, 1], dtype=np.float64)  # Root panel's normal
             x_axis = root_to_def_cm / np.linalg.norm(root_to_def_cm)  # Vector from root CM to child CM
             y_axis = np.cross(z_axis, x_axis)  # Orthogonal vector to complete the right-handed system
             y_axis /= np.linalg.norm(y_axis)
-            root_to_pose_cm = pose[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
-            shifts = np.array([x_axis, y_axis, z_axis]) @ (root_to_pose_cm - root_panel_cm)
-            radial_extention, radial_shift, elevation_shift = shifts
+
+            root_to_pose_cm = pose_df.loc[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values - root_panel_cm
+            # Compute the difference vector from root panel CM to the posed panel CM
+            diff_vec = root_to_pose_cm - root_to_def_cm
+
+            # Project the difference vector onto each axis using dot products
+            radial_extention = np.dot(diff_vec, x_axis)
+            radial_shift = np.dot(diff_vec, y_axis)
+            elevation_shift = np.dot(diff_vec, z_axis)
             radial_distance = np.linalg.norm(root_to_def_cm)
 
             # Calculate rotations (yaw, pitch, roll)
-            rotation_vector = pose[("net_rotation", ["x", "y", "z"])].values
+            rotation_vector = pose_df.loc[panel_id, ("net_rotation", ["x", "y", "z"])].values
             rotation = R.from_rotvec(rotation_vector)
             yaw, pitch, roll = rotation.as_euler('ZYX', degrees=False)
 
             # Store the misalignment values in the new DataFrame
-            misalignment_df.loc[panel_id] = [
-                radial_distance, radial_extention, radial_shift, elevation_shift, yaw, pitch, roll
-            ]
+            misalignment_df.loc[panel_id] = [radial_distance, radial_extention, radial_shift, elevation_shift, yaw, pitch, roll]
 
         return misalignment_df
     
@@ -841,7 +845,7 @@ class LinkedPanelArray():
             n = np.array([0, 0, 1])  # Normal vector of the plane (z-axis)
             # Generate two orthogonal vectors in the plane
             u = np.cross(n, np.array([1, 0, 0]))
-            if np.linalg.norm(u) < 1e-6:
+            if np.linalg.norm(u) < 1e-17:
                 u = np.cross(n, np.array([0, 1, 0]))
             u = u / np.linalg.norm(u)
             v = np.cross(n, u)
@@ -881,10 +885,13 @@ class LinkedPanelArray():
         ax.set_ylim(y_mid - max_range / 2, y_mid + max_range / 2)
         ax.set_zlim(z_mid - max_range / 2, z_mid + max_range / 2)
 
-    def visualize_posed_array_3d(self, subgraph: nx.classes.DiGraph, default_pose_df: pd.DataFrame, pose_df: pd.DataFrame, ax: plt.Axes = None, font_modifier: float = 1.0):
+    def visualize_posed_array_3d(self, root_id: str, subgraph: nx.classes.DiGraph, pose_df: pd.DataFrame, default_pose_df: pd.DataFrame | None = None, ax: plt.Axes = None, font_modifier: float = 1.0):
         """
         Visualize the panel graph in 3D with the poses from the pose_df.
         """
+        if default_pose_df is None:
+            default_pose_df = self.get_default_poses(root_id, subgraph)
+
         if ax is None:
             fig = plt.figure(figsize=(8, 8))
             ax = fig.add_subplot(111, projection='3d')
@@ -894,68 +901,86 @@ class LinkedPanelArray():
         # Create a mapping of node IDs to colors
         color_mappings = {node_id: color_gradient[i] for i, node_id in enumerate(sorted(subgraph.nodes))}
 
-        # TODO: Update desired graph objects, change to visualize misaligned pose
-        for node_id, data in sorted(subgraph.nodes(data=True)):
-            panel_obj = data["obj"]
+        # Plot the panels according to their linkages, going through their CMs
+        for node_id in sorted(subgraph.nodes):
+            panel_pos = pose_df.loc[node_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
             panel_color = color_mappings[node_id]
-            panel_pos = tuple(panel_obj.panel_cm)
             ax.text(panel_pos[0], panel_pos[1], panel_pos[2], node_id, color="black", fontsize=12*font_modifier, va="bottom")
-            nearest_kc = None
-            for parent, _ in subgraph.in_edges(node_id):
-                kc_obj = subgraph[parent][node_id]["obj"]
-                kc_origin = kc_obj.kc_origin
-                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
-                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
-                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
-                kc_points, _ = kc_obj.get_trans_kc_contact_points_norms()
-                #kc_points = kc_obj.kc_contact_points + kc_origin
-                ax.scatter(kc_points[:, 0], kc_points[:, 1], kc_points[:, 2], c=panel_color, s=20)
-            for _, child in subgraph.out_edges(node_id):
-                kc_obj = subgraph[node_id][child]["obj"]
-                kc_origin = kc_obj.kc_origin
-                if nearest_kc is None or np.linalg.norm(kc_origin - panel_pos) < nearest_kc:
-                    nearest_kc = np.linalg.norm(kc_obj.kc_origin - panel_pos)
-                ax.plot([panel_pos[0], kc_origin[0]], [panel_pos[1], kc_origin[1]], [panel_pos[2], kc_origin[2]], color=panel_color)
-            # Plotting a plane at the panel position
-            point_on_plane = panel_pos
-            n = np.array([0, 0, 1])  # Normal vector of the plane (z-axis)
-            # Generate two orthogonal vectors in the plane
-            u = np.cross(n, np.array([1, 0, 0]))
-            if np.linalg.norm(u) < 1e-6:
-                u = np.cross(n, np.array([0, 1, 0]))
-            u = u / np.linalg.norm(u)
-            v = np.cross(n, u)
-            # Generate points for a circle in the plane
-            theta = np.linspace(0, 2 * np.pi, 100)
-            circle_points = [point_on_plane + 0.5 * nearest_kc * (np.cos(t) * u + np.sin(t) * v) for t in theta]
-            circle_points = np.array(circle_points)
-            ax.plot(circle_points[:, 0], circle_points[:, 1], circle_points[:, 2], color=panel_color, alpha=0.5)
-            # Fill the circle with a solid shade
-            ax.add_collection3d(Poly3DCollection([circle_points], alpha=0.2, color=panel_color))
+            in_kc_origin = pose_df.loc[node_id, ("kc_origin_final_pos", ["x", "y", "z"])].values
+            nearest_kc = np.linalg.norm(in_kc_origin - panel_pos)
+            ax.plot([panel_pos[0], in_kc_origin[0]], [panel_pos[1], in_kc_origin[1]], [panel_pos[2], in_kc_origin[2]], color=panel_color)
+        
+        # Graphing a circle at the root panel
+        root_plane_cm = pose_df.loc[root_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+        panel_color = color_mappings[root_id]
+        n = np.array([0, 0, 1])  # Normal vector of the plane (z-axis)
+        # Generate two orthogonal vectors in the plane
+        u = np.cross(n, np.array([1, 0, 0]))
+        if np.linalg.norm(u) < 1e-17:
+            u = np.cross(n, np.array([0, 1, 0]))
+        u = u / np.linalg.norm(u)
+        v = np.cross(n, u)
+        # Generate points for a circle in the plane
+        theta = np.linspace(0, 2 * np.pi, 100)
+        nearest_kc = None
+        for _, child_id in subgraph.out_edges(node_id):
+            out_kc_origin = pose_df.loc[child_id, ("kc_origin_final_pos", ["x", "y", "z"])].values
+            if nearest_kc is None or np.linalg.norm(out_kc_origin - panel_pos) < nearest_kc:
+                nearest_kc = np.linalg.norm(out_kc_origin - panel_pos)
+        circle_points = [root_plane_cm + 0.5 * nearest_kc * (np.cos(t) * u + np.sin(t) * v) for t in theta]
+        circle_points = np.array(circle_points)
+        ax.plot(circle_points[:, 0], circle_points[:, 1], circle_points[:, 2], color=panel_color, alpha=0.5)
+        # Fill the circle with a solid shade
+        ax.add_collection3d(Poly3DCollection([circle_points], alpha=0.2, color=panel_color))
 
-        edge_labels = nx.get_edge_attributes(subgraph, "kc_id").values()
-        edge_positions = {kc_obj.kc_id: kc_obj.kc_origin for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
-        edge_normals = {kc_obj.kc_id: kc_obj.kc_origin_norm for kc_obj in nx.get_edge_attributes(subgraph, "obj").values()}
-        for label in edge_labels:
-            edge_pos = edge_positions[label]
-            edge_norm = edge_normals[label] - edge_pos
-            ax.quiver(*edge_pos, *edge_norm, color="black", pivot='tail', alpha=0.5)
-            ax.text(*edge_pos, label, color="black", fontsize=9*font_modifier, va="bottom")
+        # Get the root panel's center of mass, which serves as the origin for the new coordinate system
+        root_panel_cm = pose_df.loc[root_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+        non_root_panels = pose_df.index.difference([root_id])
+        # Iterate through each panel in the pose DataFrame
+        for panel_id in non_root_panels:
+            panel_color = color_mappings[panel_id]
+            # The direction of this vector is the x-axis of the new coordinate system
+            root_to_def_cm = default_pose_df.loc[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values - root_panel_cm
+            z_axis = np.array([0, 0, 1], dtype=np.float64)  # Root panel's normal
+            x_axis = root_to_def_cm / np.linalg.norm(root_to_def_cm)  # Vector from root CM to child CM
+            y_axis = np.cross(z_axis, x_axis)  # Orthogonal vector to complete the right-handed system
+            y_axis /= np.linalg.norm(y_axis)
+            def_panel_cm = default_pose_df.loc[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+
+            ax.quiver(*def_panel_cm, *x_axis, color=panel_color, pivot='tail', alpha=0.3, linestyle='--')
+            ax.quiver(*def_panel_cm, *y_axis, color=panel_color, pivot='tail', alpha=0.3, linestyle='--')
+            ax.quiver(*def_panel_cm, *z_axis, color=panel_color, pivot='tail', alpha=0.3, linestyle='--')
+
+            # Calculate rotations (yaw, pitch, roll)
+            rotation_vector = pose_df.loc[panel_id, ("net_rotation", ["x", "y", "z"])].values
+            rotation = R.from_rotvec(rotation_vector)
+            rotated_x_axis = rotation.apply(x_axis)
+            rotated_y_axis = rotation.apply(y_axis)
+            rotated_z_axis = rotation.apply(z_axis)
+            posed_panel_cm = pose_df.loc[panel_id, ("panel_cm_final_pos", ["x", "y", "z"])].values
+
+            ax.quiver(*posed_panel_cm, *rotated_x_axis, color=panel_color, pivot='tail', alpha=0.5)
+            ax.quiver(*posed_panel_cm, *rotated_y_axis, color=panel_color, pivot='tail', alpha=0.5)
+            ax.quiver(*posed_panel_cm, *rotated_z_axis, color=panel_color, pivot='tail', alpha=0.5)
 
         # Set equal scaling for x and y axes
         x_limits = ax.get_xlim()
         y_limits = ax.get_ylim()
+        z_limits = ax.get_zlim()
 
         x_range = x_limits[1] - x_limits[0]
         y_range = y_limits[1] - y_limits[0]
+        z_range = z_limits[1] - z_limits[0]
 
-        max_range = max(x_range, y_range)
+        max_range = max(x_range, y_range, z_range)
 
         x_mid = (x_limits[0] + x_limits[1]) / 2
         y_mid = (y_limits[0] + y_limits[1]) / 2
+        z_mid = (z_limits[0] + z_limits[1]) / 2
 
         ax.set_xlim(x_mid - max_range / 2, x_mid + max_range / 2)
         ax.set_ylim(y_mid - max_range / 2, y_mid + max_range / 2)
+        ax.set_zlim(z_mid - max_range / 2, z_mid + max_range / 2)
             
 
 
