@@ -49,18 +49,18 @@ def demo_linear_panel_array():
 
     misalignment_1 = {'g_1': np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=np.float64),
                      '1_2': np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=np.float64)}
-    pose1_df = linked_panels.get_misalignment_propagated_poses(root_node, linked_panels_sub, misalignment_1)
+    pose1_df = linked_panels.get_misalignment_propagated_world_poses(root_node, linked_panels_sub, misalignment_1)
     print(pose1_df[["panel_cm_final_pos", "net_rotation"]])
-    pose1_df_optical = linked_panels.pose_to_optical_misalignment(root_node, linked_panels_sub, pose1_df)
+    pose1_df_optical = linked_panels.world_to_optical_pose(root_node, linked_panels_sub, pose1_df)
     print(pose1_df_optical)
     linked_panels.visualize_posed_array_3d(root_node, linked_panels_sub, pose1_df)
     plt.show()
     
     misalignments_2 = {'g_1': np.array([0.0, 0.0, 0.0, 0.0, 0.1, 0.1], dtype=np.float64),
                      '1_2': np.array([0.0, 0.0, 0.0, 0.0, -0.1, -0.1], dtype=np.float64)}
-    pose2_df = linked_panels.get_misalignment_propagated_poses(root_node, linked_panels_sub, misalignments_2)
+    pose2_df = linked_panels.get_misalignment_propagated_world_poses(root_node, linked_panels_sub, misalignments_2)
     print(pose2_df[["panel_cm_final_pos", "net_rotation"]])
-    pose2_df_optical = linked_panels.pose_to_optical_misalignment(root_node, linked_panels_sub, pose2_df)
+    pose2_df_optical = linked_panels.world_to_optical_pose(root_node, linked_panels_sub, pose2_df)
     print(pose2_df_optical)
     linked_panels.visualize_posed_array_3d(root_node, linked_panels_sub, pose2_df)
     plt.show()
@@ -116,10 +116,29 @@ def demo_modelt_series_array():
     kc_s4_s5 = SideArm3BallKinematicCoupling("S4_S5", np.array([2.125, -24.193, 0], dtype=np.float64), np.array([-9.825, -36.397, 0], dtype=np.float64), 14.749, arm_length, 1.606, 0, np.pi/2, "right")
     series_panel_array.link_panels(kc_s4_s5, "S4", "S5")
 
-    #linked_panels.visualize_panel_graph()
+    #series_panel_array.visualize_panel_graph()
     #plt.show()
 
     series_panel_array.visualize_array_3d()
+    plt.show()
+
+    root_node, linked_panels_sub = series_panel_array.get_kc_path(['P_S1', 'S1_S2', 'S2_S3', 'S3_S4', 'S4_S5'])
+    series_panel_array.visualize_array_3d(linked_panels_sub)
+    plt.show()
+
+    default_pose = series_panel_array.get_default_poses(root_node, linked_panels_sub)
+    print(default_pose)
+
+    misalignment_1 = {'P_S1': np.array([0, 0, 0, 0, 0, 0.1], dtype=np.float64),
+                     'S1_S2': np.array([0, 0, 0, 0, 0, 0.1], dtype=np.float64),
+                     'S2_S3': np.array([0, 0, 0, 0, 0, 0.1], dtype=np.float64),
+                     'S3_S4': np.array([0, 0, 0, 0, 0, 0.1], dtype=np.float64),
+                     'S4_S5': np.array([0, 0, 0, 0, 0, 0.1], dtype=np.float64)}
+    pose1_df = series_panel_array.get_misalignment_propagated_world_poses(root_node, linked_panels_sub, misalignment_1)
+    print(pose1_df[["panel_cm_final_pos", "net_rotation"]])
+    pose1_df_optical = series_panel_array.world_to_optical_pose(root_node, linked_panels_sub, pose1_df)
+    print(pose1_df_optical)
+    series_panel_array.visualize_posed_array_3d(root_node, linked_panels_sub, pose1_df)
     plt.show()
 
 def demo_modelt_montecarloset_array():
@@ -188,7 +207,7 @@ def demo_modelt_montecarloset_array():
     kc_s3p_s5 = SideArm3BallKinematicCoupling("S3+_S5", np.array([-9.326, -24.920, 0], dtype=np.float64), np.array([1.356, -36.157, 0], dtype=np.float64), 17.094, arm_length, 1.536, 0, np.pi/2, "right")
     panel_collection_array.link_panels(kc_s3p_s5, "S3+", "S5")
 
-    #linked_panels.visualize_panel_graph()
+    #panel_collection_array.visualize_panel_graph()
     #plt.show()
 
     panel_collection_array.visualize_array_3d(font_modifier=0.6)
@@ -197,7 +216,7 @@ def demo_modelt_montecarloset_array():
 
 
 if __name__ == "__main__":
-    demo_linear_panel_array()
+    #demo_linear_panel_array()
     #demo_zigzag_panel_array()
-    #demo_modelt_series_array()
+    demo_modelt_series_array()
     #demo_modelt_montecarloset_array()
